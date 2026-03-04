@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/server'
 
 const BUCKET_NAME = 'images'
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient()
     const formData = await request.formData()
     const file = formData.get('file') as File
 
