@@ -1,12 +1,8 @@
--- InstaSharpen Database Schema (Better Auth Compatible)
+-- Part 1: Tables and Indexes
 -- Run this in Supabase SQL Editor
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- ============================================
--- Better Auth Required Tables
--- ============================================
 
 -- Users table (Better Auth schema)
 CREATE TABLE IF NOT EXISTS "user" (
@@ -55,10 +51,6 @@ CREATE TABLE IF NOT EXISTS "verification" (
   updatedAt TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ============================================
--- App Specific Tables
--- ============================================
-
 -- Credits table
 CREATE TABLE IF NOT EXISTS credits (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -94,96 +86,10 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ============================================
 -- Indexes
--- ============================================
 CREATE INDEX IF NOT EXISTS idx_account_userId ON "account"(userId);
 CREATE INDEX IF NOT EXISTS idx_session_userId ON "session"(userId);
 CREATE INDEX IF NOT EXISTS idx_credits_user_id ON credits(user_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON upscale_tasks(user_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_task_id ON upscale_tasks(task_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON credit_transactions(user_id);
-
--- ============================================
--- Row Level Security (RLS)
--- ============================================
-ALTER TABLE "user" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "account" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "session" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE credits ENABLE ROW LEVEL SECURITY;
-ALTER TABLE upscale_tasks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
-
--- User policies
-CREATE POLICY "Users can view own data" ON "user"
-  FOR SELECT USING (true);
-
--- Account policies
-CREATE POLICY "Users can view own accounts" ON "account"
-  FOR SELECT USING (true);
-
--- Session policies
-CREATE POLICY "Users can view own sessions" ON "session"
-  FOR SELECT USING (true);
-
--- Credits policies
-CREATE POLICY "Users can view own credits" ON credits
-  FOR SELECT USING (true);
-
-CREATE POLICY "Service role can manage credits" ON credits
-  FOR ALL USING (true);
-
--- Tasks policies
-CREATE POLICY "Users can view own tasks" ON upscale_tasks
-  FOR SELECT USING (true);
-
-CREATE POLICY "Users can create tasks" ON upscale_tasks
-  FOR INSERT WITH CHECK (true);
-
--- Transactions policies
-CREATE POLICY "Users can view own transactions" ON credit_transactions
-  FOR SELECT USING (true);
-
--- ============================================
--- Storage
--- ============================================
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('images', 'images', true)
-ON CONFLICT (id) DO NOTHING;
-
--- Storage policies for public uploads
-CREATE POLICY "Allow public uploads" ON storage.objects
-  FOR INSERT TO public
-  WITH CHECK (bucket_id = 'images');
-
-CREATE POLICY "Allow public reads" ON storage.objects
-  FOR SELECT TO public
-  USING (bucket_id = 'images');
-
-CREATE POLICY "Allow public deletes" ON storage.objects
-  FOR DELETE TO public
-  USING (bucket_id = 'images');
-
--- ============================================
--- Triggers for updated_at
--- ============================================
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updatedAt = NOW();
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS update_user_updated_at ON "user";
-CREATE TRIGGER update_user_updated_at
-  BEFORE UPDATE ON "user"
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
-
-DROP TRIGGER IF EXISTS update_credits_updated_at ON credits;
-CREATE TRIGGER update_credits_updated_at
-  BEFORE UPDATE ON credits
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
