@@ -33,16 +33,22 @@ export async function updateSession(request: NextRequest) {
   // supabase.auth.getUser(). A simple mistake could make it very hard to debug
   // issues with users being randomly logged out.
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // 添加错误处理，避免网络问题导致整个请求失败
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-  // Protected routes - redirect to home if not logged in
-  // if (!user && request.nextUrl.pathname.startsWith('/protected')) {
-  //   const url = request.nextUrl.clone()
-  //   url.pathname = '/'
-  //   return NextResponse.redirect(url)
-  // }
+    // Protected routes - redirect to home if not logged in
+    // if (!user && request.nextUrl.pathname.startsWith('/protected')) {
+    //   const url = request.nextUrl.clone()
+    //   url.pathname = '/'
+    //   return NextResponse.redirect(url)
+    // }
+  } catch (error) {
+    // 网络错误时继续，不阻止请求
+    console.error('Supabase auth error in middleware:', error)
+  }
 
   return supabaseResponse
 }

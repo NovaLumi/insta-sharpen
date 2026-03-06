@@ -1,12 +1,14 @@
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
+import { AppProvider } from "@/lib/context/AppContext"
+import Header from "@/components/Header"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "InstaSharpen - Fix Blurry Photos & Upscale to 4K Instantly",
-  description: "Free Online AI Image Upscaler. Remove JPEG Artifacts, Unblur Images to 4K, and Enhance Photo Resolution Instantly.",
+  title: "InstaSharpen - AI Image Enhancement",
+  description: "Enhance your images with Topaz AI",
 }
 
 export default function RootLayout({
@@ -15,8 +17,13 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className={inter.className}>{children}</body>
+    <html lang="en">
+      <body className={inter.className}>
+        <AppProvider>
+          <Header />
+          {children}
+        </AppProvider>
+      </body>
     </html>
   )
 }

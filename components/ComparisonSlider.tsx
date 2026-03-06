@@ -2,7 +2,7 @@
 
 import { Download, RotateCcw } from "lucide-react"
 import { motion } from "framer-motion"
-import { CompareSlider } from "react-compare-slider"
+import { ReactCompareSlider } from "react-compare-slider"
 
 interface ComparisonSliderProps {
   beforeImage: string
@@ -51,7 +51,7 @@ export default function ComparisonSlider({
 
       {/* Comparison Slider */}
       <div className="max-w-2xl mx-auto rounded-xl overflow-hidden border-2 border-border">
-        <CompareSlider
+        <ReactCompareSlider
           itemOne={
             <div className="relative w-full h-full">
               <img
