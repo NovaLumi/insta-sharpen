@@ -13,20 +13,20 @@ export const UPSCALE_OPTIONS: UpscaleOption[] = [
     factor: '2x',
     label: '2x (HD)',
     description: 'Fast',
-    cost: 1,
+    cost: 2,
   },
   {
     factor: '4x',
     label: '4x (4K)',
     description: 'Recommended',
-    cost: 2,
+    cost: 4,
     recommended: true,
   },
   {
     factor: '8x',
     label: '8x (Ultra)',
     description: 'Maximum Detail',
-    cost: 4,
+    cost: 8,
   },
 ]
 
