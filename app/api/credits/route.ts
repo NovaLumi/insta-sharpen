@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { DEFAULT_CREDITS } from '@/lib/constants'
 
 export async function GET() {
   try {
@@ -18,11 +19,11 @@ export async function GET() {
       .single()
 
     if (error) {
-      // If no credits record, create one with default 3 credits
+      // If no credits record, create one with default credits
       if (error.code === 'PGRST116') {
         const { data: newCredits, error: insertError } = await supabase
           .from('credits')
-          .insert({ user_id: user.id, amount: 3 })
+          .insert({ user_id: user.id, amount: DEFAULT_CREDITS })
           .select('amount')
           .single()
 
@@ -54,30 +55,70 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get current credits
-    const { data: currentCredits } = await supabase
-      .from('credits')
-      .select('amount')
-      .eq('user_id', user.id)
-      .single()
-
-    const currentAmount = currentCredits?.amount || 0
-
     if (operation === 'deduct') {
+      // Try RPC first for atomic operation
+      const { data: deductResult, error: rpcError } = await supabase
+        .rpc('deduct_credits_if_sufficient', {
+          p_user_id: user.id,
+          p_amount: amount,
+        })
+
+      if (!rpcError && deductResult !== null) {
+        if (!deductResult) {
+          return NextResponse.json({ error: 'Insufficient credits' }, { status: 400 })
+        }
+
+        // Record transaction
+        await supabase
+          .from('credit_transactions')
+          .insert({
+            user_id: user.id,
+            amount: -amount,
+            type: 'deduct',
+            description: description || 'Image upscaling',
+            task_id: taskId || null,
+          })
+
+        // Get updated credits
+        const { data: credits } = await supabase
+          .from('credits')
+          .select('amount')
+          .eq('user_id', user.id)
+          .single()
+
+        return NextResponse.json({ success: true, credits: credits?.amount || 0 })
+      }
+
+      // Fallback: Manual atomic deduction with optimistic locking
+      const { data: currentCredits } = await supabase
+        .from('credits')
+        .select('amount')
+        .eq('user_id', user.id)
+        .single()
+
+      const currentAmount = currentCredits?.amount || 0
+
       if (currentAmount < amount) {
         return NextResponse.json({ error: 'Insufficient credits' }, { status: 400 })
       }
 
-      const newAmount = currentAmount - amount
-
-      // Update credits
-      const { error } = await supabase
+      // Conditional update for atomicity - use select to verify update happened
+      const { data: updateResult, error: updateError } = await supabase
         .from('credits')
-        .update({ amount: newAmount, updated_at: new Date().toISOString() })
+        .update({
+          amount: currentAmount - amount,
+          updated_at: new Date().toISOString()
+        })
         .eq('user_id', user.id)
+        .eq('amount', currentAmount) // Optimistic lock
+        .select('id')
+        .maybeSingle()
 
-      if (error) {
-        return NextResponse.json({ error: 'Failed to deduct credits' }, { status: 500 })
+      if (updateError || !updateResult) {
+        return NextResponse.json(
+          { error: 'Concurrent operation detected, please retry' },
+          { status: 409 }
+        )
       }
 
       // Record transaction
@@ -91,22 +132,38 @@ export async function POST(request: Request) {
           task_id: taskId || null,
         })
 
-      return NextResponse.json({ success: true, credits: newAmount })
+      return NextResponse.json({ success: true, credits: currentAmount - amount })
     }
 
     if (operation === 'add') {
-      const newAmount = currentAmount + amount
+      // Try RPC for atomic increment
+      const { error: rpcError } = await supabase
+        .rpc('increment_credits', {
+          p_user_id: user.id,
+          p_amount: amount,
+        })
 
-      // Update or create credits record
-      if (currentCredits) {
-        await supabase
+      if (rpcError) {
+        // Fallback: manual upsert
+        const { data: currentCredits } = await supabase
           .from('credits')
-          .update({ amount: newAmount, updated_at: new Date().toISOString() })
+          .select('amount')
           .eq('user_id', user.id)
-      } else {
-        await supabase
-          .from('credits')
-          .insert({ user_id: user.id, amount: newAmount })
+          .maybeSingle()
+
+        if (currentCredits) {
+          await supabase
+            .from('credits')
+            .update({
+              amount: currentCredits.amount + amount,
+              updated_at: new Date().toISOString()
+            })
+            .eq('user_id', user.id)
+        } else {
+          await supabase
+            .from('credits')
+            .insert({ user_id: user.id, amount: amount })
+        }
       }
 
       // Record transaction
@@ -119,7 +176,14 @@ export async function POST(request: Request) {
           description: description || 'Credits purchased',
         })
 
-      return NextResponse.json({ success: true, credits: newAmount })
+      // Get final amount
+      const { data: finalCredits } = await supabase
+        .from('credits')
+        .select('amount')
+        .eq('user_id', user.id)
+        .single()
+
+      return NextResponse.json({ success: true, credits: finalCredits?.amount || amount })
     }
 
     return NextResponse.json({ error: 'Invalid operation' }, { status: 400 })

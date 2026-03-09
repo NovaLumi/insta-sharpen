@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-const BUCKET_NAME = 'images'
+// Constants - defined locally to avoid import issues
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const STORAGE_BUCKET = 'images'
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,7 +20,7 @@ export async function POST(request: NextRequest) {
     }
 
     const formData = await request.formData()
-    const file = formData.get('file') as File
+    const file = formData.get('file') as File | null
 
     if (!file) {
       return NextResponse.json(
@@ -26,45 +29,43 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: 'File size exceeds 10MB limit' },
+        { error: `File size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit` },
         { status: 400 }
       )
     }
 
-    // Check file type
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
-    if (!allowedTypes.includes(file.type)) {
+    // Validate file type
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
       return NextResponse.json(
         { error: 'Invalid file type. Only JPG, PNG, and WebP are allowed' },
         { status: 400 }
       )
     }
 
-    // Generate unique filename
-    const timestamp = Date.now()
-    const randomStr = Math.random().toString(36).substring(2, 8)
-    const ext = file.name.split('.').pop() || 'png'
-    const fileName = `uploads/${timestamp}_${randomStr}.${ext}`
-
     // Convert File to ArrayBuffer
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
 
-    // Upload to Supabase Storage
+    // Try to upload to Supabase Storage
+    const timestamp = Date.now()
+    const randomStr = Math.random().toString(36).substring(2, 8)
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
+    const fileName = `uploads/${timestamp}_${randomStr}.${ext}`
+
     const { data, error } = await supabase.storage
-      .from(BUCKET_NAME)
+      .from(STORAGE_BUCKET)
       .upload(fileName, buffer, {
         contentType: file.type,
         upsert: false,
       })
 
     if (error) {
-      console.error('Supabase upload error:', error)
+      console.log('Supabase storage upload failed, using base64 fallback:', error.message)
 
-      // Fallback to base64 if storage fails
+      // Fallback to base64 for all file sizes (temporary solution)
       const base64 = buffer.toString('base64')
       const dataUrl = `data:${file.type};base64,${base64}`
 
@@ -74,13 +75,13 @@ export async function POST(request: NextRequest) {
         fileName: file.name,
         fileSize: file.size,
         mimeType: file.type,
-        note: 'Using base64 fallback - Supabase Storage not configured',
+        note: 'Using base64 fallback - Supabase Storage not configured or RLS issue',
       })
     }
 
     // Get public URL
     const { data: urlData } = supabase.storage
-      .from(BUCKET_NAME)
+      .from(STORAGE_BUCKET)
       .getPublicUrl(data.path)
 
     return NextResponse.json({

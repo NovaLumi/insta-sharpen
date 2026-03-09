@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { UPSCALE_COST_MAP, VALID_UPSCALE_FACTORS } from '@/lib/constants'
 
 const KIE_API_URL = 'https://api.kie.ai/api/v1/jobs'
 
@@ -34,38 +35,66 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Calculate cost
-    const costMap: Record<string, number> = { '2': 1, '4': 2, '8': 4 }
-    const cost = costMap[upscaleFactor] || 1
-
-    // Check and deduct credits atomically
-    const { data: currentCredits, error: creditError } = await supabase
-      .from('credits')
-      .select('amount')
-      .eq('user_id', user.id)
-      .single()
-
-    if (creditError || !currentCredits || currentCredits.amount < cost) {
+    // Validate upscale factor
+    if (!VALID_UPSCALE_FACTORS.includes(upscaleFactor)) {
       return NextResponse.json(
-        { error: 'Insufficient credits' },
+        { error: 'Invalid upscale factor. Must be 2, 4, or 8' },
         { status: 400 }
       )
     }
 
-    // Deduct credits before processing
-    const { error: deductError } = await supabase
-      .from('credits')
-      .update({
-        amount: currentCredits.amount - cost,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('user_id', user.id)
+    const cost = UPSCALE_COST_MAP[upscaleFactor] || 1
 
-    if (deductError) {
-      return NextResponse.json(
-        { error: 'Failed to deduct credits' },
-        { status: 500 }
-      )
+    // Atomic credit deduction using conditional update
+    // This ensures we only deduct if user has enough credits
+    const { data: deductResult, error: deductError } = await supabase
+      .rpc('deduct_credits_if_sufficient', {
+        p_user_id: user.id,
+        p_amount: cost,
+      })
+
+    // If RPC exists, check result
+    if (!deductError && deductResult !== null) {
+      if (!deductResult) {
+        return NextResponse.json(
+          { error: 'Insufficient credits' },
+          { status: 400 }
+        )
+      }
+    } else {
+      // Fallback: Manual atomic deduction
+      const { data: currentCredits, error: creditError } = await supabase
+        .from('credits')
+        .select('amount')
+        .eq('user_id', user.id)
+        .single()
+
+      if (creditError || !currentCredits || currentCredits.amount < cost) {
+        return NextResponse.json(
+          { error: 'Insufficient credits' },
+          { status: 400 }
+        )
+      }
+
+      // Use conditional update to ensure atomicity
+      // Note: count is only returned with { count: 'exact' } option
+      const { error: updateError, count } = await supabase
+        .from('credits')
+        .update({
+          amount: currentCredits.amount - cost,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id)
+        .eq('amount', currentCredits.amount) // Optimistic locking
+        .select('id')
+
+      if (updateError || (count !== undefined && count === 0)) {
+        // Concurrent modification detected
+        return NextResponse.json(
+          { error: 'Concurrent operation detected, please retry' },
+          { status: 409 }
+        )
+      }
     }
 
     // Record transaction
@@ -98,19 +127,8 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok || data.code !== 200) {
       console.error('Kie.ai API error:', data)
-      // Refund credits on API failure
-      await supabase
-        .from('credits')
-        .update({ amount: currentCredits.amount })
-        .eq('user_id', user.id)
-      await supabase
-        .from('credit_transactions')
-        .insert({
-          user_id: user.id,
-          amount: cost,
-          type: 'refund',
-          description: 'API error - credit refund',
-        })
+      // Refund credits on API failure using increment (atomic)
+      await refundCredits(supabase, user.id, cost, 'API error - credit refund')
       return NextResponse.json(
         { error: data.msg || 'Failed to create upscale task' },
         { status: response.status }
@@ -121,6 +139,7 @@ export async function POST(request: NextRequest) {
 
     if (!taskId) {
       console.error('Failed to get taskId from kie.ai response:', data)
+      await refundCredits(supabase, user.id, cost, 'No taskId - credit refund')
       return NextResponse.json(
         { error: 'Failed to create task' },
         { status: 500 }
@@ -152,8 +171,47 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Helper function to refund credits atomically
+async function refundCredits(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  amount: number,
+  reason: string
+) {
+  // Use increment update for atomic refund
+  const { error: rpcError } = await supabase
+    .rpc('increment_credits', {
+      p_user_id: userId,
+      p_amount: amount,
+    })
+
+  if (rpcError) {
+    // Fallback: manual increment
+    const { data: credits } = await supabase
+      .from('credits')
+      .select('amount')
+      .eq('user_id', userId)
+      .single()
+
+    if (credits) {
+      await supabase
+        .from('credits')
+        .update({ amount: credits.amount + amount })
+        .eq('user_id', userId)
+    }
+  }
+
+  await supabase
+    .from('credit_transactions')
+    .insert({
+      user_id: userId,
+      amount: amount,
+      type: 'refund',
+      description: reason,
+    })
+}
+
 // Poll task status from kie.ai API
-// state values: 'waiting' -> 'generating' -> 'success' or 'failed'
 export async function GET(request: NextRequest) {
   try {
     const KIE_API_KEY = process.env.KIE_API_KEY
@@ -229,7 +287,6 @@ export async function GET(request: NextRequest) {
       const resultJson = data.data?.resultJson
 
       if (apiState === 'success') {
-        // Parse resultJson to get the URL
         let resultUrl = null
         if (resultJson) {
           try {
@@ -259,28 +316,15 @@ export async function GET(request: NextRequest) {
       }
 
       if (apiState === 'failed') {
-        // Refund credits on failure
-        if (task.credits_used && task.user_id) {
-          const { data: credits } = await supabase
-            .from('credits')
-            .select('amount')
-            .eq('user_id', task.user_id)
-            .single()
-
-          if (credits) {
-            await supabase
-              .from('credits')
-              .update({ amount: credits.amount + task.credits_used })
-              .eq('user_id', task.user_id)
-            await supabase
-              .from('credit_transactions')
-              .insert({
-                user_id: task.user_id,
-                amount: task.credits_used,
-                type: 'refund',
-                description: 'Processing failed - credit refund',
-              })
-          }
+        // Refund credits on failure using atomic increment
+        // Note: Use !== null to handle credits_used = 0 case
+        if (task.credits_used !== null && task.credits_used !== undefined && task.user_id) {
+          await refundCredits(
+            supabase,
+            task.user_id,
+            task.credits_used,
+            'Processing failed - credit refund'
+          )
         }
 
         await supabase

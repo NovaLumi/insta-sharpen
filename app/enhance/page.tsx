@@ -1,12 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import UploadArea from "@/components/UploadArea"
 import UpscaleSelector from "@/components/UpscaleSelector"
 import ComparisonSlider from "@/components/ComparisonSlider"
 import type { UpscaleFactor } from "@/types"
 import { UPSCALE_OPTIONS } from "@/types"
 import { useApp } from "@/lib/context/AppContext"
+
+// Configuration constants
+const POLL_INTERVAL_MS = 1000
+const MAX_POLL_ATTEMPTS = 120 // 2 minutes max
 
 export default function EnhancePage() {
   const { credits, fetchCredits } = useApp()
@@ -18,22 +22,46 @@ export default function EnhancePage() {
   const [processingStatus, setProcessingStatus] = useState<string>("")
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 })
 
+  // Track object URLs for cleanup - only cleanup on unmount
+  const objectUrlsRef = useRef<Set<string>>(new Set())
+  const isMountedRef = useRef(true)
+
+  // Cleanup all object URLs only on unmount
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      // Revoke all object URLs on unmount
+      objectUrlsRef.current.forEach(url => {
+        URL.revokeObjectURL(url)
+      })
+      objectUrlsRef.current.clear()
+    }
+  }, [])
+
   const getCost = (factor: UpscaleFactor) => {
     return UPSCALE_OPTIONS.find(opt => opt.factor === factor)?.cost || 1
   }
 
-  const handleImageUpload = (file: File) => {
-    setUploadedImage(file)
+  const handleImageUpload = useCallback((file: File) => {
+    // Create object URL and track it
     const preview = URL.createObjectURL(file)
+    objectUrlsRef.current.add(preview)
+
+    setUploadedImage(file)
     setImagePreview(preview)
     setProcessedImage(null)
+    setProcessingStatus("")
 
+    // Load image dimensions
     const img = new Image()
     img.onload = () => {
-      setImageDimensions({ width: img.width, height: img.height })
+      if (isMountedRef.current) {
+        setImageDimensions({ width: img.width, height: img.height })
+      }
     }
     img.src = preview
-  }
+  }, [])
 
   const handleProcess = async () => {
     if (!uploadedImage) return
@@ -66,6 +94,7 @@ export default function EnhancePage() {
 
       const imageUrl = uploadData.url
 
+      if (!isMountedRef.current) return
       setProcessingStatus("Creating upscale task...")
 
       const upscaleResponse = await fetch('/api/upscale', {
@@ -92,51 +121,83 @@ export default function EnhancePage() {
       // Credits deducted by API, refresh display
       fetchCredits()
 
+      if (!isMountedRef.current) return
       setProcessingStatus("Processing... (usually takes 1-2 minutes)")
+
+      // Poll for status with error handling
       let attempts = 0
-      const maxAttempts = 120 // 2 minutes max with 1s interval
 
-      while (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 1000))
+      while (attempts < MAX_POLL_ATTEMPTS && isMountedRef.current) {
+        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
 
-        const statusResponse = await fetch(`/api/upscale?taskId=${taskId}`)
-        const statusData = await statusResponse.json()
-        console.log('Poll response:', statusData)
+        // Check if component is still mounted
+        if (!isMountedRef.current) return
 
-        if (statusData.status === 'completed') {
-          // Preload image before displaying
-          setProcessingStatus("Loading result...")
-          const img = new Image()
-          img.onload = () => {
-            setProcessedImage(statusData.result?.url)
-            fetchCredits()
-            setIsProcessing(false)
-            setProcessingStatus("")
+        try {
+          const statusResponse = await fetch(`/api/upscale?taskId=${taskId}`)
+
+          if (!statusResponse.ok) {
+            // Non-200 response, log but continue polling
+            console.warn('Status check failed:', statusResponse.status)
+            attempts++
+            continue
           }
-          img.onerror = () => {
-            setProcessedImage(statusData.result?.url)
-            fetchCredits()
-            setIsProcessing(false)
-            setProcessingStatus("")
+
+          const statusData = await statusResponse.json()
+          console.log('Poll response:', statusData)
+
+          if (statusData.status === 'completed') {
+            // Preload image before displaying
+            setProcessingStatus("Loading result...")
+            const img = new Image()
+            img.onload = () => {
+              if (isMountedRef.current) {
+                setProcessedImage(statusData.result?.url)
+                fetchCredits()
+                setIsProcessing(false)
+                setProcessingStatus("")
+              }
+            }
+            img.onerror = () => {
+              if (isMountedRef.current) {
+                setProcessedImage(statusData.result?.url)
+                fetchCredits()
+                setIsProcessing(false)
+                setProcessingStatus("")
+              }
+            }
+            img.src = statusData.result?.url
+            return
           }
-          img.src = statusData.result?.url
-          return
-        }
 
-        if (statusData.status === 'failed') {
-          fetchCredits()
-          throw new Error(statusData.refunded ? 'Processing failed - credits refunded' : 'Processing failed')
-        }
+          if (statusData.status === 'failed') {
+            fetchCredits()
+            throw new Error(statusData.refunded ? 'Processing failed - credits refunded' : 'Processing failed')
+          }
 
-        attempts++
+          attempts++
+        } catch (pollError) {
+          // Network error during polling, log and retry
+          console.warn('Poll error:', pollError)
+          attempts++
+
+          // If too many consecutive errors, fail
+          if (attempts >= MAX_POLL_ATTEMPTS) {
+            throw new Error('Failed to check processing status. Please refresh the page.')
+          }
+        }
       }
 
-      throw new Error('Processing timeout')
+      if (attempts >= MAX_POLL_ATTEMPTS) {
+        throw new Error('Processing timeout')
+      }
 
     } catch (error) {
       console.error('Processing error:', error)
-      setProcessingStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      setIsProcessing(false)
+      if (isMountedRef.current) {
+        setProcessingStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        setIsProcessing(false)
+      }
     }
   }
 
@@ -147,6 +208,19 @@ export default function EnhancePage() {
     link.download = `upscaled-${selectedFactor}-${Date.now()}.png`
     link.click()
   }
+
+  const handleReset = useCallback(() => {
+    setProcessedImage(null)
+    setImagePreview(null)
+    setUploadedImage(null)
+    setProcessingStatus("")
+    setIsProcessing(false)
+  }, [])
+
+  const handleCancelUpload = useCallback(() => {
+    setUploadedImage(null)
+    setImagePreview(null)
+  }, [])
 
   const getUpscaledDimensions = () => {
     const multiplier = parseInt(selectedFactor)
@@ -171,11 +245,17 @@ export default function EnhancePage() {
         <div className="space-y-8">
           {/* Uploaded Image Preview */}
           <div className="flex justify-center">
-            <img
-              src={imagePreview}
-              alt="Uploaded"
-              className="max-w-md rounded-lg border border-border"
-            />
+            {imagePreview ? (
+              <img
+                src={imagePreview}
+                alt="Uploaded image preview"
+                className="max-w-md rounded-lg border border-border"
+              />
+            ) : (
+              <div className="w-64 h-64 rounded-lg border border-border bg-secondary/20 flex items-center justify-center">
+                <p className="text-muted-foreground">No image</p>
+              </div>
+            )}
           </div>
 
           {/* Control Panel */}
@@ -203,10 +283,7 @@ export default function EnhancePage() {
             </button>
             {!isProcessing && (
               <button
-                onClick={() => {
-                  setUploadedImage(null)
-                  setImagePreview(null)
-                }}
+                onClick={handleCancelUpload}
                 className="px-6 py-2 rounded-lg border border-border hover:bg-secondary transition-colors text-sm"
               >
                 Cancel
@@ -216,18 +293,14 @@ export default function EnhancePage() {
         </div>
       ) : (
         <ComparisonSlider
-          beforeImage={imagePreview}
+          beforeImage={imagePreview || ""}
           afterImage={processedImage}
           originalWidth={imageDimensions.width}
           originalHeight={imageDimensions.height}
           upscaledWidth={getUpscaledDimensions().width}
           upscaledHeight={getUpscaledDimensions().height}
           onDownload={handleDownload}
-          onReset={() => {
-            setProcessedImage(null)
-            setImagePreview(null)
-            setUploadedImage(null)
-          }}
+          onReset={handleReset}
         />
       )}
     </main>

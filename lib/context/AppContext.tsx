@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react"
+import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
 
 interface UserSession {
@@ -24,7 +24,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserSession | null>(null)
   const [credits, setCredits] = useState(0)
   const [loading, setLoading] = useState(true)
-  const supabase = createClient()
+
+  // Use ref to keep stable reference to supabase client
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
+
+  // Get or create supabase client (singleton)
+  const getSupabase = useCallback(() => {
+    if (!supabaseRef.current) {
+      supabaseRef.current = createClient()
+    }
+    return supabaseRef.current
+  }, [])
 
   const fetchCredits = useCallback(async () => {
     try {
@@ -37,14 +47,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signOut = useCallback(async () => {
+    const supabase = getSupabase()
     await supabase.auth.signOut()
     setUser(null)
     setCredits(0)
-  }, [supabase.auth])
+  }, [getSupabase])
 
   useEffect(() => {
+    const supabase = getSupabase()
+    let mounted = true
+
     // Get initial session
     supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!mounted) return
+
       if (user) {
         setUser({
           id: user.id,
@@ -55,10 +71,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         fetchCredits()
       }
       setLoading(false)
+    }).catch((error) => {
+      console.error('Auth error:', error)
+      if (mounted) {
+        setLoading(false)
+      }
     })
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return
+
       if (session?.user) {
         setUser({
           id: session.user.id,
@@ -74,9 +97,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
 
     return () => {
+      mounted = false
       subscription.unsubscribe()
     }
-  }, [supabase.auth, fetchCredits])
+  }, [getSupabase, fetchCredits])
 
   return (
     <AppContext.Provider value={{ user, credits, loading, fetchCredits, signOut }}>
