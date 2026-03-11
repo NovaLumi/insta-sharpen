@@ -58,8 +58,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let mounted = true
 
     // Get initial session
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(({ data: { user }, error }) => {
       if (!mounted) return
+
+      // Handle refresh token error - user needs to re-login
+      if (error) {
+        console.warn('Auth session error:', error.message)
+        setUser(null)
+        setCredits(0)
+        setLoading(false)
+        return
+      }
 
       if (user) {
         setUser({
@@ -74,6 +83,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }).catch((error) => {
       console.error('Auth error:', error)
       if (mounted) {
+        setUser(null)
+        setCredits(0)
         setLoading(false)
       }
     })
