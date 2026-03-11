@@ -2,11 +2,11 @@
 
 import { createClient } from "@/lib/supabase/client"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useEffect, useState } from "react"
-import { LogIn, Loader2 } from "lucide-react"
+import { useEffect, useState, Suspense } from "react"
+import { Loader2 } from "lucide-react"
 import Link from "next/link"
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get("redirect") || "/enhance"
@@ -111,5 +111,27 @@ export default function LoginPage() {
         </Link>
       </p>
     </main>
+  )
+}
+
+function LoginLoading() {
+  return (
+    <main className="container mx-auto px-4 py-16 max-w-md">
+      <div className="bg-card border rounded-2xl p-8">
+        <div className="animate-pulse">
+          <div className="h-8 bg-secondary rounded w-48 mx-auto mb-8"></div>
+          <div className="h-12 bg-secondary rounded mb-6"></div>
+          <div className="h-4 bg-secondary rounded w-32 mx-auto"></div>
+        </div>
+      </div>
+    </main>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginLoading />}>
+      <LoginContent />
+    </Suspense>
   )
 }
