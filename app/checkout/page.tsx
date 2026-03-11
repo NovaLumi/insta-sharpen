@@ -25,13 +25,10 @@ function CheckoutContent() {
     }
   }, [user, loading, router])
 
-  // Show loading while checking auth
-  if (loading) {
-    return <CheckoutLoading />
-  }
-
+  // Load PayPal SDK - always called, but only executes if user is logged in
   useEffect(() => {
-    // Load PayPal SDK
+    if (loading || !user) return
+
     const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID
     if (!clientId) {
       console.error("PayPal Client ID not configured")
@@ -54,10 +51,11 @@ function CheckoutContent() {
       setMessage("Failed to load payment. Please refresh the page.")
     }
     document.body.appendChild(script)
-  }, [])
+  }, [loading, user])
 
+  // Render PayPal buttons - always called, but only executes when conditions are met
   useEffect(() => {
-    if (!sdkLoaded || !window.paypal || !containerRef.current || !plan) return
+    if (loading || !user || !sdkLoaded || !window.paypal || !containerRef.current || !plan) return
 
     // Clear any existing buttons
     containerRef.current.innerHTML = ""
@@ -118,7 +116,7 @@ function CheckoutContent() {
         setStatus("idle")
       },
     }).render(containerRef.current)
-  }, [sdkLoaded, plan, fetchCredits])
+  }, [sdkLoaded, plan, fetchCredits, loading, user])
 
   // Show loading while checking auth
   if (loading) {
