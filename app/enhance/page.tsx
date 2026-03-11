@@ -279,7 +279,7 @@ export default function EnhancePage() {
               className="px-8 py-3 rounded-lg bg-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <span>✨</span>
-              {isProcessing ? processingStatus : credits < currentCost ? "Insufficient Credits" : "Enhance Image"}
+              {isProcessing ? processingStatus : credits < currentCost ? `Insufficient Credits${credits === 0 ? ' (Please sign in)' : ''}` : "Enhance Image"}
             </button>
             {!isProcessing && (
               <button

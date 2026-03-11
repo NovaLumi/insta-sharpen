@@ -9,7 +9,7 @@ import { Check, ArrowLeft } from "lucide-react"
 function CheckoutContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const { fetchCredits } = useApp()
+  const { user, loading, fetchCredits } = useApp()
   const planId = searchParams.get("plan") || "pro"
   const plan = getPlan(planId)
 
@@ -17,6 +17,18 @@ function CheckoutContent() {
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle")
   const [message, setMessage] = useState("")
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Redirect to login if not logged in
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/login?redirect=" + window.location.pathname + window.location.search)
+    }
+  }, [user, loading, router])
+
+  // Show loading while checking auth
+  if (loading) {
+    return <CheckoutLoading />
+  }
 
   useEffect(() => {
     // Load PayPal SDK
@@ -107,6 +119,29 @@ function CheckoutContent() {
       },
     }).render(containerRef.current)
   }, [sdkLoaded, plan, fetchCredits])
+
+  // Show loading while checking auth
+  if (loading) {
+    return <CheckoutLoading />
+  }
+
+  // Don't render if not logged in
+  if (!user) {
+    return (
+      <main className="container mx-auto px-4 py-16 max-w-2xl">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">Sign in required</h1>
+          <p className="text-muted-foreground mb-6">Please sign in to purchase credits.</p>
+          <button
+            onClick={() => router.push("/")}
+            className="px-6 py-3 rounded-lg bg-primary text-primary-foreground font-semibold"
+          >
+            Go to Home
+          </button>
+        </div>
+      </main>
+    )
+  }
 
   // Handle invalid plan
   if (!plan) {
