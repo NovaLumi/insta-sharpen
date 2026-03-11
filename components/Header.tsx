@@ -1,7 +1,6 @@
 "use client"
 
 import { Coins, LogIn, LogOut, User, Menu, X } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import Link from "next/link"
@@ -12,16 +11,6 @@ export default function Header() {
   const router = useRouter()
   const { user, credits, loading, signOut } = useApp()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const supabase = createClient()
-
-  const handleGoogleSignIn = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-  }
 
   const handleSignOut = async () => {
     await signOut()
@@ -97,13 +86,13 @@ export default function Header() {
               </div>
             </>
           ) : (
-            <button
-              onClick={handleGoogleSignIn}
+            <Link
+              href="/login"
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity"
             >
               <LogIn className="w-4 h-4" />
               Sign in
-            </button>
+            </Link>
           )}
 
           {/* Mobile Menu Button */}
