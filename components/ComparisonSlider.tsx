@@ -3,6 +3,7 @@
 import { Download, RotateCcw } from "lucide-react"
 import { motion } from "framer-motion"
 import { ReactCompareSlider } from "react-compare-slider"
+import Image from "next/image"
 
 interface ComparisonSliderProps {
   beforeImage: string
@@ -54,10 +55,12 @@ export default function ComparisonSlider({
         <ReactCompareSlider
           itemOne={
             <div className="relative w-full h-full">
-              <img
+              <Image
                 src={beforeImage}
-                alt="Before"
-                className="w-full h-full object-cover"
+                alt="Before - Original image"
+                fill
+                className="object-cover"
+                unoptimized
               />
               <div className="absolute top-4 left-4 px-3 py-1 bg-black/70 text-white text-sm font-medium rounded-full">
                 Original
@@ -66,10 +69,12 @@ export default function ComparisonSlider({
           }
           itemTwo={
             <div className="relative w-full h-full">
-              <img
+              <Image
                 src={afterImage}
-                alt="After"
-                className="w-full h-full object-cover"
+                alt="After - Upscaled image"
+                fill
+                className="object-cover"
+                unoptimized
               />
               <div className="absolute top-4 right-4 px-3 py-1 bg-primary text-white text-sm font-medium rounded-full">
                 Upscaled

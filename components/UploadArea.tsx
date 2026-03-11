@@ -8,8 +8,26 @@ interface UploadAreaProps {
   onImageUpload: (file: File) => void
 }
 
+// Validation constants
+const VALID_TYPES = ['image/jpeg', 'image/png', 'image/jpg']
+const MAX_SIZE = 10 * 1024 * 1024 // 10MB
+
 export default function UploadArea({ onImageUpload }: UploadAreaProps) {
   const [isDragging, setIsDragging] = useState(false)
+
+  const validateAndUpload = useCallback((file: File) => {
+    if (!VALID_TYPES.includes(file.type)) {
+      alert('Please upload a JPG or PNG image.')
+      return
+    }
+
+    if (file.size > MAX_SIZE) {
+      alert('File size must be less than 10MB.')
+      return
+    }
+
+    onImageUpload(file)
+  }, [onImageUpload])
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -39,31 +57,14 @@ export default function UploadArea({ onImageUpload }: UploadAreaProps) {
       const file = e.dataTransfer.files[0]
       validateAndUpload(file)
     }
-  }, [])
+  }, [validateAndUpload])
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0]
       validateAndUpload(file)
     }
-  }, [])
-
-  const validateAndUpload = (file: File) => {
-    const validTypes = ['image/jpeg', 'image/png', 'image/jpg']
-    const maxSize = 10 * 1024 * 1024 // 10MB
-
-    if (!validTypes.includes(file.type)) {
-      alert('Please upload a JPG or PNG image.')
-      return
-    }
-
-    if (file.size > maxSize) {
-      alert('File size must be less than 10MB.')
-      return
-    }
-
-    onImageUpload(file)
-  }
+  }, [validateAndUpload])
 
   return (
     <motion.div

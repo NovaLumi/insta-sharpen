@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { useApp } from "@/lib/context/AppContext"
 
 export default function Header() {
@@ -68,11 +69,14 @@ export default function Header() {
               <div className="hidden sm:flex items-center gap-3">
                 <div className="flex items-center gap-2">
                   {user.image ? (
-                    <img
+                    <Image
                       src={user.image}
-                      alt={user.name || "User"}
-                      className="w-8 h-8 rounded-full"
+                      alt={user.name || "User avatar"}
+                      width={32}
+                      height={32}
+                      className="rounded-full"
                       referrerPolicy="no-referrer"
+                      unoptimized
                     />
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
@@ -140,11 +144,14 @@ export default function Header() {
             {user && (
               <div className="flex items-center gap-3 pt-4 border-t border-border">
                 {user.image && (
-                  <img
+                  <Image
                     src={user.image}
-                    alt={user.name || "User"}
-                    className="w-8 h-8 rounded-full"
+                    alt={user.name || "User avatar"}
+                    width={32}
+                    height={32}
+                    className="rounded-full"
                     referrerPolicy="no-referrer"
+                    unoptimized
                   />
                 )}
                 <span className="text-sm font-medium">{user.name || user.email}</span>

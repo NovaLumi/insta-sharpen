@@ -18,16 +18,27 @@ function CheckoutContent() {
   const [message, setMessage] = useState("")
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Redirect to login if not logged in
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login?redirect=" + window.location.pathname + window.location.search)
-    }
-  }, [user, loading, router])
+  // Track view state to ensure hooks are always called in the same order
+  const [viewState, setViewState] = useState<"loading" | "login" | "invalid" | "checkout">("loading")
 
-  // Load PayPal SDK - always called, but only executes if user is logged in
+  // Determine view state based on loading and user
   useEffect(() => {
-    if (loading || !user) return
+    if (loading) {
+      setViewState("loading")
+    } else if (!user) {
+      setViewState("login")
+      // Redirect to login
+      router.push("/login?redirect=" + window.location.pathname + window.location.search)
+    } else if (!plan) {
+      setViewState("invalid")
+    } else {
+      setViewState("checkout")
+    }
+  }, [loading, user, plan, router])
+
+  // Load PayPal SDK
+  useEffect(() => {
+    if (viewState !== "checkout") return
 
     const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID
     if (!clientId) {
@@ -51,11 +62,11 @@ function CheckoutContent() {
       setMessage("Failed to load payment. Please refresh the page.")
     }
     document.body.appendChild(script)
-  }, [loading, user])
+  }, [viewState])
 
-  // Render PayPal buttons - always called, but only executes when conditions are met
+  // Render PayPal buttons
   useEffect(() => {
-    if (loading || !user || !sdkLoaded || !window.paypal || !containerRef.current || !plan) return
+    if (viewState !== "checkout" || !sdkLoaded || !window.paypal || !containerRef.current || !plan) return
 
     // Clear any existing buttons
     containerRef.current.innerHTML = ""
@@ -116,123 +127,126 @@ function CheckoutContent() {
         setStatus("idle")
       },
     }).render(containerRef.current)
-  }, [sdkLoaded, plan, fetchCredits, loading, user])
+  }, [sdkLoaded, plan, fetchCredits, viewState])
 
-  // Show loading while checking auth
-  if (loading) {
-    return <CheckoutLoading />
-  }
+  // Render based on view state - all hooks are called before any conditional returns
+  const renderContent = () => {
+    if (viewState === "loading") {
+      return <CheckoutLoading />
+    }
 
-  // Don't render if not logged in
-  if (!user) {
+    if (viewState === "login") {
+      return (
+        <main className="container mx-auto px-4 py-16 max-w-2xl">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-4">Sign in required</h1>
+            <p className="text-muted-foreground mb-6">Please sign in to purchase credits.</p>
+            <button
+              onClick={() => router.push("/")}
+              className="px-6 py-3 rounded-lg bg-primary text-primary-foreground font-semibold"
+            >
+              Go to Home
+            </button>
+          </div>
+        </main>
+      )
+    }
+
+    if (viewState === "invalid") {
+      return (
+        <main className="container mx-auto px-4 py-16 max-w-2xl">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-4">Invalid Plan</h1>
+            <p className="text-muted-foreground mb-6">The selected plan does not exist.</p>
+            <button
+              onClick={() => router.push("/pricing")}
+              className="px-6 py-3 rounded-lg bg-primary text-primary-foreground font-semibold"
+            >
+              Back to Pricing
+            </button>
+          </div>
+        </main>
+      )
+    }
+
+    // viewState === "checkout"
     return (
       <main className="container mx-auto px-4 py-16 max-w-2xl">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Sign in required</h1>
-          <p className="text-muted-foreground mb-6">Please sign in to purchase credits.</p>
-          <button
-            onClick={() => router.push("/")}
-            className="px-6 py-3 rounded-lg bg-primary text-primary-foreground font-semibold"
-          >
-            Go to Home
-          </button>
+        {/* Back button */}
+        <button
+          onClick={() => router.push("/pricing")}
+          className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Pricing
+        </button>
+
+        <div className="bg-card border rounded-2xl p-8">
+          {/* Plan info */}
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-bold mb-2">{plan?.name} Plan</h1>
+            <div className="flex items-baseline justify-center gap-1 mb-2">
+              <span className="text-4xl font-bold">${plan?.price}</span>
+              <span className="text-muted-foreground">USD</span>
+            </div>
+            <p className="text-muted-foreground">{plan?.credits} credits</p>
+          </div>
+
+          {/* Features */}
+          <ul className="space-y-3 mb-8">
+            {plan?.features.map((feature, index) => (
+              <li key={index} className="flex items-center gap-3">
+                <Check className="w-5 h-5 text-primary flex-shrink-0" />
+                <span className="text-sm">{feature}</span>
+              </li>
+            ))}
+          </ul>
+
+          {/* Status messages */}
+          {status === "success" && (
+            <div className="text-center py-4 text-green-600 font-medium bg-green-50 rounded-lg mb-4">
+              {message}
+            </div>
+          )}
+          {status === "error" && (
+            <div className="text-center py-4 text-red-600 bg-red-50 rounded-lg mb-4">
+              {message}
+            </div>
+          )}
+
+          {/* PayPal Button */}
+          {status !== "success" && (
+            <div className="mt-4">
+              {sdkLoaded ? (
+                <div ref={containerRef} className={status === "loading" ? "opacity-50 pointer-events-none" : ""} />
+              ) : (
+                <div className="h-14 flex items-center justify-center text-muted-foreground border rounded-lg">
+                  Loading payment...
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Success actions */}
+          {status === "success" && (
+            <button
+              onClick={() => router.push("/enhance")}
+              className="w-full py-3 rounded-lg font-semibold bg-primary text-primary-foreground hover:opacity-90 transition-colors"
+            >
+              Start Enhancing Images
+            </button>
+          )}
         </div>
+
+        {/* Security note */}
+        <p className="text-center text-muted-foreground text-sm mt-6">
+          Secure payment powered by PayPal
+        </p>
       </main>
     )
   }
 
-  // Handle invalid plan
-  if (!plan) {
-    return (
-      <main className="container mx-auto px-4 py-16 max-w-2xl">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Invalid Plan</h1>
-          <p className="text-muted-foreground mb-6">The selected plan does not exist.</p>
-          <button
-            onClick={() => router.push("/pricing")}
-            className="px-6 py-3 rounded-lg bg-primary text-primary-foreground font-semibold"
-          >
-            Back to Pricing
-          </button>
-        </div>
-      </main>
-    )
-  }
-
-  return (
-    <main className="container mx-auto px-4 py-16 max-w-2xl">
-      {/* Back button */}
-      <button
-        onClick={() => router.push("/pricing")}
-        className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to Pricing
-      </button>
-
-      <div className="bg-card border rounded-2xl p-8">
-        {/* Plan info */}
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold mb-2">{plan.name} Plan</h1>
-          <div className="flex items-baseline justify-center gap-1 mb-2">
-            <span className="text-4xl font-bold">${plan.price}</span>
-            <span className="text-muted-foreground">USD</span>
-          </div>
-          <p className="text-muted-foreground">{plan.credits} credits</p>
-        </div>
-
-        {/* Features */}
-        <ul className="space-y-3 mb-8">
-          {plan.features.map((feature, index) => (
-            <li key={index} className="flex items-center gap-3">
-              <Check className="w-5 h-5 text-primary flex-shrink-0" />
-              <span className="text-sm">{feature}</span>
-            </li>
-          ))}
-        </ul>
-
-        {/* Status messages */}
-        {status === "success" && (
-          <div className="text-center py-4 text-green-600 font-medium bg-green-50 rounded-lg mb-4">
-            {message}
-          </div>
-        )}
-        {status === "error" && (
-          <div className="text-center py-4 text-red-600 bg-red-50 rounded-lg mb-4">
-            {message}
-          </div>
-        )}
-
-        {/* PayPal Button */}
-        {status !== "success" && (
-          <div className="mt-4">
-            {sdkLoaded ? (
-              <div ref={containerRef} className={status === "loading" ? "opacity-50 pointer-events-none" : ""} />
-            ) : (
-              <div className="h-14 flex items-center justify-center text-muted-foreground border rounded-lg">
-                Loading payment...
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Success actions */}
-        {status === "success" && (
-          <button
-            onClick={() => router.push("/enhance")}
-            className="w-full py-3 rounded-lg font-semibold bg-primary text-primary-foreground hover:opacity-90 transition-colors"
-          >
-            Start Enhancing Images
-          </button>
-        )}
-      </div>
-
-      {/* Security note */}
-      <p className="text-center text-muted-foreground text-sm mt-6">
-        Secure payment powered by PayPal
-      </p>
-    </main>
-  )
+  return renderContent()
 }
 
 function CheckoutLoading() {

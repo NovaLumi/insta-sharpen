@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import Image from "next/image"
 import UploadArea from "@/components/UploadArea"
 import UpscaleSelector from "@/components/UpscaleSelector"
 import ComparisonSlider from "@/components/ComparisonSlider"
@@ -29,13 +30,15 @@ export default function EnhancePage() {
   // Cleanup all object URLs only on unmount
   useEffect(() => {
     isMountedRef.current = true
+    // Copy ref value to variable for cleanup function
+    const urls = objectUrlsRef.current
     return () => {
       isMountedRef.current = false
       // Revoke all object URLs on unmount
-      objectUrlsRef.current.forEach(url => {
+      urls.forEach(url => {
         URL.revokeObjectURL(url)
       })
-      objectUrlsRef.current.clear()
+      urls.clear()
     }
   }, [])
 
@@ -54,7 +57,7 @@ export default function EnhancePage() {
     setProcessingStatus("")
 
     // Load image dimensions
-    const img = new Image()
+    const img = new window.Image()
     img.onload = () => {
       if (isMountedRef.current) {
         setImageDimensions({ width: img.width, height: img.height })
@@ -149,7 +152,7 @@ export default function EnhancePage() {
           if (statusData.status === 'completed') {
             // Preload image before displaying
             setProcessingStatus("Loading result...")
-            const img = new Image()
+            const img = new window.Image()
             img.onload = () => {
               if (isMountedRef.current) {
                 setProcessedImage(statusData.result?.url)
@@ -246,10 +249,13 @@ export default function EnhancePage() {
           {/* Uploaded Image Preview */}
           <div className="flex justify-center">
             {imagePreview ? (
-              <img
+              <Image
                 src={imagePreview}
                 alt="Uploaded image preview"
+                width={400}
+                height={400}
                 className="max-w-md rounded-lg border border-border"
+                unoptimized
               />
             ) : (
               <div className="w-64 h-64 rounded-lg border border-border bg-secondary/20 flex items-center justify-center">

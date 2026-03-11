@@ -1,6 +1,6 @@
 "use client"
 
-import { ArrowRight, Zap, Image, Shield } from "lucide-react"
+import { ArrowRight, Zap, Image as ImageIcon, Shield } from "lucide-react"
 import Link from "next/link"
 
 export default function HomePage() {
@@ -52,7 +52,7 @@ export default function HomePage() {
 
           <div className="text-center p-6">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-              <Image className="w-8 h-8 text-primary" />
+              <ImageIcon className="w-8 h-8 text-primary" />
             </div>
             <h3 className="text-xl font-semibold mb-2">8K Resolution</h3>
             <p className="text-muted-foreground">
