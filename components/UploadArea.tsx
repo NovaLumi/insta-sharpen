@@ -8,21 +8,20 @@ interface UploadAreaProps {
   onImageUpload: (file: File) => void
 }
 
-// Validation constants
-const VALID_TYPES = ['image/jpeg', 'image/png', 'image/jpg']
-const MAX_SIZE = 10 * 1024 * 1024 // 10MB
+const VALID_TYPES = ["image/jpeg", "image/png", "image/jpg", "image/webp"]
+const MAX_SIZE = 10 * 1024 * 1024
 
 export default function UploadArea({ onImageUpload }: UploadAreaProps) {
   const [isDragging, setIsDragging] = useState(false)
 
   const validateAndUpload = useCallback((file: File) => {
     if (!VALID_TYPES.includes(file.type)) {
-      alert('Please upload a JPG or PNG image.')
+      alert("Please upload a JPG, PNG, or WebP image.")
       return
     }
 
     if (file.size > MAX_SIZE) {
-      alert('File size must be less than 10MB.')
+      alert("File size must be less than 10MB.")
       return
     }
 
@@ -54,15 +53,13 @@ export default function UploadArea({ onImageUpload }: UploadAreaProps) {
     setIsDragging(false)
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0]
-      validateAndUpload(file)
+      validateAndUpload(e.dataTransfer.files[0])
     }
   }, [validateAndUpload])
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0]
-      validateAndUpload(file)
+      validateAndUpload(e.target.files[0])
     }
   }, [validateAndUpload])
 
@@ -71,7 +68,7 @@ export default function UploadArea({ onImageUpload }: UploadAreaProps) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="max-w-2xl mx-auto"
+      className="mx-auto max-w-2xl"
     >
       <div
         onDragEnter={handleDragIn}
@@ -79,42 +76,38 @@ export default function UploadArea({ onImageUpload }: UploadAreaProps) {
         onDragOver={handleDrag}
         onDrop={handleDrop}
         className={`
-          relative border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer
-          transition-all duration-300
+          relative rounded-[28px] border-2 border-dashed p-12 text-center transition-all duration-300
           ${isDragging
-            ? 'border-primary bg-primary/5 scale-105'
-            : 'border-border hover:border-primary/50 hover:bg-secondary/30'
+            ? "scale-[1.02] border-primary bg-primary/10"
+            : "border-border bg-white/[0.02] hover:border-primary/50 hover:bg-white/[0.04]"
           }
         `}
       >
         <input
           type="file"
-          accept="image/jpeg,image/png,image/jpg"
+          accept="image/jpeg,image/png,image/jpg,image/webp"
           onChange={handleFileInput}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
         />
 
         <div className="space-y-4">
-          <motion.div
-            whileHover={{ scale: 1.1, rotate: 5 }}
-            className="flex justify-center"
-          >
+          <motion.div whileHover={{ scale: 1.1, rotate: 5 }} className="flex justify-center">
             {isDragging ? (
-              <Upload className="w-16 h-16 text-primary" />
+              <Upload className="h-16 w-16 text-primary" />
             ) : (
-              <ImageIcon className="w-16 h-16 text-muted-foreground" />
+              <ImageIcon className="h-16 w-16 text-muted-foreground" />
             )}
           </motion.div>
 
           <div className="space-y-2">
             <p className="text-xl font-semibold">
-              {isDragging ? 'Drop your image here' : 'Upload your image'}
+              {isDragging ? "Drop your image here" : "Upload your image"}
             </p>
             <p className="text-sm text-muted-foreground">
-              Drag & drop or click to browse
+              Drag and drop or click to browse your files
             </p>
             <p className="text-xs text-muted-foreground">
-              Supports JPG, PNG • Max 10MB
+              Supports JPG, PNG, WebP • Max 10MB
             </p>
           </div>
         </div>

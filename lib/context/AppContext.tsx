@@ -20,6 +20,23 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
 
+function mapSessionUser(user: {
+  id: string
+  email?: string
+  user_metadata?: Record<string, unknown>
+}): UserSession {
+  return {
+    id: user.id,
+    email: user.email || "",
+    name: (user.user_metadata?.full_name as string | undefined) || (user.user_metadata?.name as string | undefined),
+    image: (user.user_metadata?.avatar_url as string | undefined) || (user.user_metadata?.picture as string | undefined),
+  }
+}
+
+function isLockAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError"
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserSession | null>(null)
   const [credits, setCredits] = useState(0)
@@ -48,7 +65,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     const supabase = getSupabase()
-    await supabase.auth.signOut()
+    try {
+      await supabase.auth.signOut()
+    } catch (error) {
+      if (!isLockAbortError(error)) {
+        throw error
+      }
+    }
     setUser(null)
     setCredits(0)
   }, [getSupabase])
@@ -57,12 +80,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const supabase = getSupabase()
     let mounted = true
 
-    // Get initial session
-    supabase.auth.getUser().then(({ data: { user }, error }) => {
+    // On the client, use session storage first to avoid auth lock contention.
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (!mounted) return
 
-      // Handle refresh token error - user needs to re-login
       if (error) {
+        if (isLockAbortError(error)) {
+          setLoading(false)
+          return
+        }
+
         console.warn('Auth session error:', error.message)
         setUser(null)
         setCredits(0)
@@ -70,17 +97,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      if (user) {
-        setUser({
-          id: user.id,
-          email: user.email || '',
-          name: user.user_metadata?.full_name || user.user_metadata?.name,
-          image: user.user_metadata?.avatar_url || user.user_metadata?.picture,
-        })
+      if (session?.user) {
+        setUser(mapSessionUser(session.user))
         fetchCredits()
       }
       setLoading(false)
     }).catch((error) => {
+      if (isLockAbortError(error)) {
+        if (mounted) {
+          setLoading(false)
+        }
+        return
+      }
+
       console.error('Auth error:', error)
       if (mounted) {
         setUser(null)
@@ -94,12 +123,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!mounted) return
 
       if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email || '',
-          name: session.user.user_metadata?.full_name || session.user.user_metadata?.name,
-          image: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture,
-        })
+        setUser(mapSessionUser(session.user))
         fetchCredits()
       } else {
         setUser(null)

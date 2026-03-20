@@ -1,6 +1,7 @@
 "use client"
 
 import { createClient } from "@/lib/supabase/client"
+import { useApp } from "@/lib/context/AppContext"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useEffect, useState, Suspense } from "react"
 import { Loader2 } from "lucide-react"
@@ -10,20 +11,16 @@ function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get("redirect") || "/enhance"
+  const { user, loading: authLoading } = useApp()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const supabase = createClient()
 
   useEffect(() => {
-    // Check if already logged in
-    const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        router.push(redirectTo)
-      }
+    if (!authLoading && user) {
+      router.push(redirectTo)
     }
-    checkAuth()
-  }, [router, redirectTo, supabase])
+  }, [authLoading, user, router, redirectTo])
 
   const handleGoogleSignIn = async () => {
     setLoading(true)
@@ -31,7 +28,7 @@ function LoginContent() {
 
     try {
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+        provider: "google",
         options: {
           redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
         },
@@ -41,7 +38,7 @@ function LoginContent() {
         setError(error.message)
         setLoading(false)
       }
-    } catch (err) {
+    } catch {
       setError("Failed to sign in. Please try again.")
       setLoading(false)
     }
@@ -50,7 +47,6 @@ function LoginContent() {
   return (
     <main className="container mx-auto px-4 py-16 max-w-md">
       <div className="bg-card border rounded-2xl p-8">
-        {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-500 bg-clip-text text-transparent">
             InstaSharpen
@@ -58,14 +54,12 @@ function LoginContent() {
           <p className="text-muted-foreground mt-2">Sign in to your account</p>
         </div>
 
-        {/* Error message */}
         {error && (
           <div className="mb-6 p-4 rounded-lg bg-red-50 text-red-600 text-sm text-center">
             {error}
           </div>
         )}
 
-        {/* Google Sign In Button */}
         <button
           onClick={handleGoogleSignIn}
           disabled={loading}
@@ -98,16 +92,14 @@ function LoginContent() {
           )}
         </button>
 
-        {/* Terms */}
         <p className="text-xs text-muted-foreground text-center mt-6">
           By signing in, you agree to our Terms of Service and Privacy Policy
         </p>
       </div>
 
-      {/* Back to home */}
       <p className="text-center text-muted-foreground text-sm mt-6">
         <Link href="/" className="hover:text-foreground transition-colors">
-          ← Back to Home
+          Back to Home
         </Link>
       </p>
     </main>

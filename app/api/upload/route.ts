@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     const timestamp = Date.now()
     const randomStr = Math.random().toString(36).substring(2, 8)
     const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
-    const fileName = `uploads/${timestamp}_${randomStr}.${ext}`
+    const fileName = `${user.id}/${timestamp}_${randomStr}.${ext}`
 
     const { data, error } = await supabase.storage
       .from(STORAGE_BUCKET)

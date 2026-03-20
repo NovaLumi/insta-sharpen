@@ -37,6 +37,11 @@ export default function Header() {
           <Link href="/pricing" className="text-muted-foreground hover:text-foreground transition-colors">
             Pricing
           </Link>
+          {user && (
+            <Link href="/debug" className="text-muted-foreground hover:text-foreground transition-colors">
+              Debug
+            </Link>
+          )}
         </nav>
 
         {/* Right Side */}
@@ -130,6 +135,15 @@ export default function Header() {
             >
               Pricing
             </Link>
+            {user && (
+              <Link
+                href="/debug"
+                className="text-muted-foreground hover:text-foreground transition-colors py-2"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Debug
+              </Link>
+            )}
             {user && (
               <div className="flex items-center gap-3 pt-4 border-t border-border">
                 {user.image && (

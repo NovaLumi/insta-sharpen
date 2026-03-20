@@ -10,10 +10,7 @@ export default function HomePage() {
       <section className="text-center">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-5xl md:text-6xl font-bold mb-6 leading-tight">
-            Enhance Your Images with{" "}
-            <span className="bg-gradient-to-r from-primary to-purple-500 bg-clip-text text-transparent">
-              Topaz AI
-            </span>
+            Enhance Your Images with AI Photo Enhancer
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
             Upscale your images up to 8x resolution using professional-grade AI.
@@ -96,7 +93,7 @@ export default function HomePage() {
         <div className="max-w-2xl mx-auto text-center bg-gradient-to-r from-primary/10 to-purple-500/10 rounded-2xl p-8">
           <h2 className="text-2xl font-bold mb-4">Ready to enhance your images?</h2>
           <p className="text-muted-foreground mb-6">
-            Start with 3 free credits. No credit card required.
+            Sign in to claim 3 free credits. No credit card required.
           </p>
           <Link
             href="/enhance"

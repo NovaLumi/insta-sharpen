@@ -35,26 +35,24 @@ export default function ComparisonSlider({
     >
       <div className="text-center">
         <h2 className="text-2xl font-bold mb-2">Enhancement Complete!</h2>
-        <p className="text-muted-foreground">Drag the slider to compare before & after</p>
+        <p className="text-muted-foreground">Drag the slider to compare before and after.</p>
       </div>
 
-      {/* Resolution Info */}
-      <div className="flex justify-center gap-6 text-sm">
-        <div className="px-4 py-2 bg-secondary/50 rounded-lg">
+      <div className="flex flex-wrap justify-center gap-4 text-sm">
+        <div className="rounded-lg bg-secondary/50 px-4 py-2">
           <span className="text-muted-foreground">Original: </span>
-          <span className="font-medium">{originalWidth} × {originalHeight}</span>
+          <span className="font-medium">{originalWidth} x {originalHeight}</span>
         </div>
-        <div className="px-4 py-2 bg-primary/10 rounded-lg">
+        <div className="rounded-lg bg-primary/10 px-4 py-2">
           <span className="text-primary">Upscaled: </span>
-          <span className="font-medium text-primary">{upscaledWidth} × {upscaledHeight}</span>
+          <span className="font-medium text-primary">{upscaledWidth} x {upscaledHeight}</span>
         </div>
       </div>
 
-      {/* Comparison Slider */}
-      <div className="max-w-2xl mx-auto rounded-xl overflow-hidden border-2 border-border">
+      <div className="mx-auto max-w-2xl overflow-hidden rounded-xl border-2 border-border">
         <ReactCompareSlider
           itemOne={
-            <div className="relative w-full h-full">
+            <div className="relative h-full w-full">
               <Image
                 src={beforeImage}
                 alt="Before - Original image"
@@ -62,13 +60,13 @@ export default function ComparisonSlider({
                 className="object-cover"
                 unoptimized
               />
-              <div className="absolute top-4 left-4 px-3 py-1 bg-black/70 text-white text-sm font-medium rounded-full">
+              <div className="absolute top-4 left-4 rounded-full bg-black/70 px-3 py-1 text-sm font-medium text-white">
                 Original
               </div>
             </div>
           }
           itemTwo={
-            <div className="relative w-full h-full">
+            <div className="relative h-full w-full">
               <Image
                 src={afterImage}
                 alt="After - Upscaled image"
@@ -76,7 +74,7 @@ export default function ComparisonSlider({
                 className="object-cover"
                 unoptimized
               />
-              <div className="absolute top-4 right-4 px-3 py-1 bg-primary text-white text-sm font-medium rounded-full">
+              <div className="absolute top-4 right-4 rounded-full bg-primary px-3 py-1 text-sm font-medium text-white">
                 Upscaled
               </div>
             </div>
@@ -85,24 +83,23 @@ export default function ComparisonSlider({
         />
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex justify-center gap-4">
+      <div className="flex flex-wrap justify-center gap-4">
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={onReset}
-          className="flex items-center gap-2 px-6 py-3 rounded-lg border border-border hover:bg-secondary transition-colors"
+          className="flex items-center gap-2 rounded-lg border border-border px-6 py-3 transition-colors hover:bg-secondary"
         >
-          <RotateCcw className="w-4 h-4" />
+          <RotateCcw className="h-4 w-4" />
           New Image
         </motion.button>
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={onDownload}
-          className="flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity"
+          className="flex items-center gap-2 rounded-lg bg-primary px-6 py-3 font-semibold text-primary-foreground transition-opacity hover:opacity-90"
         >
-          <Download className="w-4 h-4" />
+          <Download className="h-4 w-4" />
           Download High-Quality Image
         </motion.button>
       </div>

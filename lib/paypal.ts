@@ -7,6 +7,16 @@ const PAYPAL_API_BASE = process.env.NODE_ENV === 'production'
   ? 'https://api-m.paypal.com'
   : 'https://api-m.sandbox.paypal.com'
 
+interface PayPalTokenResponse {
+  access_token?: string
+  error?: string
+  error_description?: string
+}
+
+function getPayPalEnvironmentLabel(): 'live' | 'sandbox' {
+  return process.env.NODE_ENV === 'production' ? 'live' : 'sandbox'
+}
+
 export function getPayPalApiBase(): string {
   return PAYPAL_API_BASE
 }
@@ -35,23 +45,37 @@ export async function generateAccessToken(): Promise<string> {
     },
   })
 
-  const data = await response.json() as {
-    access_token?: string
-    error?: string
-    error_description?: string
+  const rawBody = await response.text()
+  let data: PayPalTokenResponse = {}
+
+  if (rawBody) {
+    try {
+      data = JSON.parse(rawBody) as PayPalTokenResponse
+    } catch {
+      data = {}
+    }
   }
 
   if (!response.ok) {
+    const detail = data.error_description || data.error
+    const likelyHint = response.status === 401
+      ? `PayPal rejected the client credentials. This usually means the ${getPayPalEnvironmentLabel()} client ID/secret do not match the ${getPayPalEnvironmentLabel()} API endpoint.`
+      : undefined
+
     console.error('PayPal auth error:', {
       status: response.status,
       error: data.error,
-      error_description: data.error_description
+      error_description: data.error_description,
+      apiBase: PAYPAL_API_BASE,
+      environment: getPayPalEnvironmentLabel(),
+      rawBody: rawBody || '<empty>',
+      likelyHint,
     })
-    throw new Error(data.error_description || data.error || 'Failed to generate access token')
+    throw new Error(detail || likelyHint || `Failed to generate access token (HTTP ${response.status})`)
   }
 
   if (!data.access_token) {
-    throw new Error('No access token in PayPal response')
+    throw new Error(`No access token in PayPal response from ${PAYPAL_API_BASE}`)
   }
 
   return data.access_token

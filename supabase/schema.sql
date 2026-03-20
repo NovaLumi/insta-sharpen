@@ -128,20 +128,26 @@ DROP POLICY IF EXISTS "Allow public uploads" ON storage.objects;
 DROP POLICY IF EXISTS "Allow public reads" ON storage.objects;
 DROP POLICY IF EXISTS "Allow public deletes" ON storage.objects;
 
--- Only authenticated users can upload
+-- Only authenticated users can upload to their own user-id prefix
 CREATE POLICY "Authenticated users can upload" ON storage.objects
   FOR INSERT TO authenticated
-  WITH CHECK (bucket_id = 'images');
+  WITH CHECK (
+    bucket_id = 'images'
+    AND split_part(name, '/', 1) = auth.uid()::text
+  );
 
 -- Everyone can read (images are public after upload)
 CREATE POLICY "Anyone can read images" ON storage.objects
   FOR SELECT TO public
   USING (bucket_id = 'images');
 
--- Only authenticated users can delete their own uploads
+-- Only authenticated users can delete uploads stored under their own user-id prefix
 CREATE POLICY "Authenticated users can delete own uploads" ON storage.objects
   FOR DELETE TO authenticated
-  USING (bucket_id = 'images');
+  USING (
+    bucket_id = 'images'
+    AND split_part(name, '/', 1) = auth.uid()::text
+  );
 
 -- ============================================
 -- Helper Functions for Atomic Operations
@@ -193,6 +199,86 @@ BEGIN
   DO UPDATE SET
     amount = credits.amount + p_amount,
     updated_at = NOW();
+END;
+$$;
+
+-- Function to atomically record a PayPal purchase and add credits exactly once
+CREATE OR REPLACE FUNCTION process_paypal_credit_purchase(
+  p_user_id UUID,
+  p_order_id VARCHAR,
+  p_credits INTEGER,
+  p_description VARCHAR
+)
+RETURNS TABLE (
+  status TEXT,
+  credits INTEGER,
+  credits_added INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  existing_user_id UUID;
+  final_credits INTEGER;
+BEGIN
+  SELECT user_id
+  INTO existing_user_id
+  FROM credit_transactions
+  WHERE paypal_order_id = p_order_id
+  LIMIT 1;
+
+  IF existing_user_id IS NOT NULL THEN
+    IF existing_user_id <> p_user_id THEN
+      RAISE EXCEPTION 'paypal_order_id already belongs to another user';
+    END IF;
+
+    SELECT amount
+    INTO final_credits
+    FROM credits
+    WHERE user_id = p_user_id;
+
+    RETURN QUERY
+    SELECT 'already_processed'::TEXT, COALESCE(final_credits, 0), 0;
+    RETURN;
+  END IF;
+
+  BEGIN
+    INSERT INTO credit_transactions (
+      user_id,
+      amount,
+      type,
+      description,
+      paypal_order_id
+    )
+    VALUES (
+      p_user_id,
+      p_credits,
+      'purchase',
+      p_description,
+      p_order_id
+    );
+  EXCEPTION
+    WHEN unique_violation THEN
+      SELECT amount
+      INTO final_credits
+      FROM credits
+      WHERE user_id = p_user_id;
+
+      RETURN QUERY
+      SELECT 'already_processed'::TEXT, COALESCE(final_credits, 0), 0;
+      RETURN;
+  END;
+
+  INSERT INTO credits (user_id, amount)
+  VALUES (p_user_id, p_credits)
+  ON CONFLICT (user_id)
+  DO UPDATE SET
+    amount = credits.amount + EXCLUDED.amount,
+    updated_at = NOW()
+  RETURNING amount INTO final_credits;
+
+  RETURN QUERY
+  SELECT 'processed'::TEXT, final_credits, p_credits;
 END;
 $$;
 

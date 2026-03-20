@@ -129,6 +129,16 @@ function CheckoutContent() {
     }).render(containerRef.current)
   }, [sdkLoaded, plan, fetchCredits, viewState])
 
+  useEffect(() => {
+    if (status !== "success") return
+
+    const redirectTimer = window.setTimeout(() => {
+      router.push("/enhance")
+    }, 1500)
+
+    return () => window.clearTimeout(redirectTimer)
+  }, [status, router])
+
   // Render based on view state - all hooks are called before any conditional returns
   const renderContent = () => {
     if (viewState === "loading") {
@@ -205,7 +215,7 @@ function CheckoutContent() {
           {/* Status messages */}
           {status === "success" && (
             <div className="text-center py-4 text-green-600 font-medium bg-green-50 rounded-lg mb-4">
-              {message}
+              {message} Redirecting you to the editor...
             </div>
           )}
           {status === "error" && (
@@ -233,7 +243,7 @@ function CheckoutContent() {
               onClick={() => router.push("/enhance")}
               className="w-full py-3 rounded-lg font-semibold bg-primary text-primary-foreground hover:opacity-90 transition-colors"
             >
-              Start Enhancing Images
+              Go to Enhance Now
             </button>
           )}
         </div>

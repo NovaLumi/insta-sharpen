@@ -1,6 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { generateAccessToken, getPayPalApiBase, parsePayPalOrder, validatePayment, getPlan, type PayPalOrderResponse } from '@/lib/paypal'
+import {
+  generateAccessToken,
+  getPayPalApiBase,
+  parsePayPalOrder,
+  validatePayment,
+  getPlan,
+  type PayPalOrderResponse,
+} from '@/lib/paypal'
+
+interface ProcessPurchaseResult {
+  status: 'processed' | 'already_processed'
+  credits: number
+  credits_added: number
+}
+
+async function getCurrentCredits(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
+  const { data } = await supabase
+    .from('credits')
+    .select('amount')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  return data?.amount || 0
+}
 
 // Capture PayPal Order and add credits
 export async function POST(request: NextRequest) {
@@ -18,24 +41,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing orderId' }, { status: 400 })
     }
 
-    // Check if this order has already been processed (prevent duplicate payments)
     const { data: existingTransaction } = await supabase
       .from('credit_transactions')
-      .select('id')
+      .select('amount, description, type')
       .eq('paypal_order_id', orderId)
+      .eq('user_id', user.id)
       .maybeSingle()
 
-    if (existingTransaction) {
-      return NextResponse.json(
-        { error: 'Order already processed' },
-        { status: 400 }
-      )
+    if (existingTransaction && existingTransaction.type !== 'purchase_pending') {
+      const credits = await getCurrentCredits(supabase, user.id)
+
+      return NextResponse.json({
+        success: true,
+        credits,
+        creditsAdded: existingTransaction?.amount || 0,
+        alreadyProcessed: true,
+      })
     }
 
     const accessToken = await generateAccessToken()
     const apiBase = getPayPalApiBase()
 
-    // Capture the order
     const response = await fetch(`${apiBase}/v2/checkout/orders/${orderId}/capture`, {
       method: 'POST',
       headers: {
@@ -54,7 +80,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Parse order data
     const parsedOrder = parsePayPalOrder(orderData)
     if (!parsedOrder) {
       return NextResponse.json(
@@ -63,7 +88,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate the payment (status, plan, amount)
     const validation = validatePayment(parsedOrder)
     if (!validation.valid) {
       console.error('Payment validation failed:', validation.error, parsedOrder)
@@ -73,7 +97,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify the user matches
     if (parsedOrder.userId !== user.id) {
       console.error('User ID mismatch:', parsedOrder.userId, user.id)
       return NextResponse.json(
@@ -90,84 +113,39 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use atomic update with increment to avoid race conditions
-    // First, try to update existing record
-    const { data: updateResult, error: updateError } = await supabase
-      .rpc('increment_credits', {
+    const { data: purchaseResult, error: purchaseError } = await supabase
+      .rpc('process_paypal_credit_purchase', {
         p_user_id: user.id,
-        p_amount: plan.credits,
+        p_order_id: orderId,
+        p_credits: plan.credits,
+        p_description: `${plan.name} plan - PayPal (${orderId})`,
       })
 
-    if (updateError) {
-      // If RPC doesn't exist, fall back to manual upsert
-      const { data: currentCredits } = await supabase
-        .from('credits')
-        .select('amount')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (currentCredits) {
-        const { error: upsertError } = await supabase
-          .from('credits')
-          .update({
-            amount: currentCredits.amount + plan.credits,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('user_id', user.id)
-
-        if (upsertError) {
-          console.error('Failed to update credits:', upsertError)
-          return NextResponse.json(
-            { error: 'Failed to add credits' },
-            { status: 500 }
-          )
-        }
-      } else {
-        const { error: insertError } = await supabase
-          .from('credits')
-          .insert({
-            user_id: user.id,
-            amount: plan.credits,
-          })
-
-        if (insertError) {
-          console.error('Failed to insert credits:', insertError)
-          return NextResponse.json(
-            { error: 'Failed to add credits' },
-            { status: 500 }
-          )
-        }
-      }
+    if (purchaseError) {
+      console.error('Atomic PayPal credit processing failed:', purchaseError)
+      return NextResponse.json(
+        { error: 'Database migration required or payment processing failed' },
+        { status: 500 }
+      )
     }
 
-    // Get final credits amount
-    const { data: finalCredits } = await supabase
-      .from('credits')
-      .select('amount')
-      .eq('user_id', user.id)
-      .single()
+    const result = Array.isArray(purchaseResult)
+      ? purchaseResult[0] as ProcessPurchaseResult | undefined
+      : purchaseResult as ProcessPurchaseResult | undefined
 
-    // Record transaction with paypal_order_id for deduplication
-    const { error: transactionError } = await supabase
-      .from('credit_transactions')
-      .insert({
-        user_id: user.id,
-        amount: plan.credits,
-        type: 'purchase',
-        description: `${plan.name} plan - PayPal (${orderId})`,
-        paypal_order_id: orderId,
-      })
-
-    if (transactionError) {
-      console.error('Failed to record transaction:', transactionError)
-      // Don't fail the request, but log the error
+    if (!result) {
+      return NextResponse.json(
+        { error: 'Unexpected payment processing result' },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({
       success: true,
-      credits: finalCredits?.amount || plan.credits,
+      credits: result.credits,
       planName: plan.name,
-      creditsAdded: plan.credits,
+      creditsAdded: result.credits_added,
+      alreadyProcessed: result.status === 'already_processed',
     })
   } catch (error) {
     console.error('Capture order error:', error)
