@@ -2,6 +2,13 @@
 
 import { ArrowRight, Zap, Image as ImageIcon, Shield } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
+import { ReactCompareSlider } from "react-compare-slider"
+
+const DEMO_BEFORE_IMAGE =
+  "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=800"
+const DEMO_AFTER_IMAGE =
+  "https://tempfile.aiquickdraw.com/h/88b876ea4c0b3095c105025d36952cc1_1774234040.png"
 
 export default function HomePage() {
   return (
@@ -74,10 +81,41 @@ export default function HomePage() {
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-bold mb-8">See the Difference</h2>
           <div className="relative rounded-2xl overflow-hidden border border-border bg-secondary/20">
-            <div className="aspect-video flex items-center justify-center text-muted-foreground">
-              <p>Before/After comparison slider demo</p>
-            </div>
+            <ReactCompareSlider
+              itemOne={
+                <div className="relative h-full w-full">
+                  <Image
+                    src={DEMO_BEFORE_IMAGE}
+                    alt="Original portrait before enhancement"
+                    fill
+                    unoptimized
+                    className="object-cover"
+                  />
+                  <div className="absolute left-4 top-4 rounded-full bg-black/70 px-3 py-1 text-sm font-medium text-white">
+                    Before
+                  </div>
+                </div>
+              }
+              itemTwo={
+                <div className="relative h-full w-full">
+                  <Image
+                    src={DEMO_AFTER_IMAGE}
+                    alt="Enhanced portrait after AI upscale"
+                    fill
+                    unoptimized
+                    className="object-cover"
+                  />
+                  <div className="absolute right-4 top-4 rounded-full bg-primary px-3 py-1 text-sm font-medium text-white">
+                    After 4x
+                  </div>
+                </div>
+              }
+              className="aspect-video"
+            />
           </div>
+          <p className="mt-4 text-sm text-muted-foreground">
+            Real 4x upscale demo generated with our KIE pipeline from a public portrait sample.
+          </p>
           <Link
             href="/enhance"
             className="inline-flex items-center gap-2 mt-8 text-primary font-semibold hover:underline"

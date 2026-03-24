@@ -11,6 +11,14 @@ const nextConfig = {
         protocol: 'https',
         hostname: '*.kie.ai',
       },
+      {
+        protocol: 'https',
+        hostname: 'images.pexels.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'tempfile.aiquickdraw.com',
+      },
     ],
   },
 }
